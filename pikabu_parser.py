@@ -10,17 +10,12 @@ import string
 import sys
 import time
 
-current_data_count = 0
-all_story_count = 0
-number_of_errors = 0
-required_records_number = 100000
-
-page_num = 1
-
 from_date = date(2017, 1, 1)
 until_date = date(2022, 5, 28)
+required_records_number = 100000
 
 class PikabuParser:
+    """Service for parsing pages with listing posts from Pikabu"""
     def __init__(self, from_date, until_date, required_records_number):
         self.from_date = from_date
         self.until_date = until_date
@@ -31,7 +26,8 @@ class PikabuParser:
         self.all_story_count = 0
         self.number_of_errors = 0
 
-    def call(self):    
+    def call(self):
+        """The main function for calling parser"""
         start_time = time.time()
         try:
             self.parse_pages()
@@ -45,9 +41,11 @@ class PikabuParser:
             sys.exit()
 
     def parse_pages(self):
+        """Parse the every 100 pages from date <from_date> to date <until_date> and
+           write suitable posts to a file"""
         while self.page_num <= 100:
             while self.current_date <= self.until_date: 
-                self.parse_page()
+                self.parse_page_and_write_data()
                 if self.current_data_count >= self.required_records_number:
                     break
                 self.current_date += timedelta(days = 1)
@@ -57,20 +55,11 @@ class PikabuParser:
             self.page_num += 1
             self.current_date = self.from_date
 
-    def parse_page(self):
+    def parse_page_and_write_data(self):
+        """"Parse page and write data to file"""
         page_url = self.get_search_page_url()
-        logger.info(f"start parse page #{self.page_num}, stories date: {self.current_date}")
-        self.write_page_data(page_url)
-
-    def get_search_page_url(self):
-        return f"https://pikabu.ru/search?n=2&st=3&d={self.get_day_param(self.current_date)}&page={self.page_num}"
-
-    def get_day_param(self, stories_date):
-        # d=5245 => 12.05.2022, d=5244 => 11.05.2022 ( 5245 - 5244 = 1 (day) )
-        return 5245 + (stories_date - date(2022, 5, 11)).days
-
-    def write_page_data(self, page_url):
-        headers = {'User-Agent': UserAgent().random}
+        logger.info(f"start parse page #{ self.page_num }, stories date: { self.current_date }")
+        headers = { 'User-Agent': UserAgent().random }
         try:
             page_response = requests.get(page_url, headers = headers, timeout=6)
         except:
@@ -100,13 +89,25 @@ class PikabuParser:
                 logger.exception(f"exception #{self.number_of_errors}")
                 pass
 
+    def get_search_page_url(self):
+        """Get the url of the page with posts. 
+           Additional parameters passed: day, page number,  posts type is text, sort by relevance"""
+        return f"https://pikabu.ru/search?n=2&st=3&d={self.get_day_param(self.current_date)}&page={self.page_num}"
+
+    def get_day_param(self, stories_date):
+        """Calculate the parameter <d> (day) responsible for the date of posts"""
+        # d=5245 => 12.05.2022, d=5244 => 11.05.2022 ( 5245 - 5244 = 1 (day) )
+        return 5245 + (stories_date - date(2022, 5, 11)).days
+
     def is_ad(self, story_block):
+        """Determine the advertising block or not"""
         return story_block.get('data-author-id') == None or \
             story_block.get('data-author-name') == "pikabu.deals" or \
             story_block.find('time', class_='caption story__datetime hint') == None or \
             story_block.get('data-rating') == None
 
     def get_story_data(self, story_block):
+        """Return dictionary with post info"""
         story_text = self.get_text(story_block)
         return { 'story_id': [story_block.get('data-story-id')],
         'author_id': [story_block.get('data-author-id')],
@@ -136,6 +137,7 @@ class PikabuParser:
         return self.filter_str(story_block.text)
 
     def filter_str(self, text):
+        """Delete punctuation, extra whitespaces and links"""
         link_regex = re.compile("(https?:\/\/)(\s)*(www\.)?(\s)*((\w|\s|\-)+\.)*([\w\-\s]+\/)*([\w\-?\.]+)((\?)?[\w\s]*=\s*[\w\%&]*)*")
         punctuation_regex = re.compile('[%s]' % re.escape(string.punctuation))
         filtered = link_regex.sub('<some_link>', text)
